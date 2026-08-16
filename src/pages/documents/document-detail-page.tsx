@@ -11,6 +11,7 @@ import { useAuth } from '@/features/auth/auth-context';
 import { useToast } from '@/components/ui/toast';
 import { useDocumentsMeta } from '@/features/documents/documents-meta-context';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
+import { buildDocumentPreviewSource } from '@/lib/document-preview-source';
 import {
   requestJson,
   type DocumentDetailHistoryItem,
@@ -47,7 +48,6 @@ function buildFullName(firstName: string | null, lastName: string | null, fallba
 function fileIsSupported(file: File) {
   const allowedMimeTypes = new Set([
     'application/pdf',
-    'application/msword',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     'image/jpeg',
     'image/png',
@@ -56,7 +56,7 @@ function fileIsSupported(file: File) {
     'image/svg+xml',
   ]);
 
-  const allowedExtensions = ['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'];
+  const allowedExtensions = ['pdf', 'docx', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'];
   const extension = file.name.split('.').pop()?.toLowerCase() ?? '';
 
   return allowedMimeTypes.has(file.type) || allowedExtensions.includes(extension);
@@ -250,6 +250,8 @@ export function DocumentDetailPage() {
   const [approvalSelected, setApprovalSelected] = useState<UserSearchItem[]>([]);
   const [approvalLoading, setApprovalLoading] = useState(false);
   const [approvalSubmitting, setApprovalSubmitting] = useState(false);
+  const [previewBlob, setPreviewBlob] = useState<Blob | null>(null);
+  const [previewStatus, setPreviewStatus] = useState<'loading' | 'error' | null>(null);
 
   const debouncedApprovalSearch = useDebouncedValue(approvalSearchInput, 300);
   const replacementFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -354,6 +356,68 @@ export function DocumentDetailPage() {
     setReplacementFile(null);
     setReplacementPreview(null);
   }, [document?.id, document?.name]);
+
+  useEffect(() => {
+    const currentFile = document?.currentFile;
+    const documentId = document?.id;
+    const previewUrl = currentFile?.previewUrl;
+
+    if (!documentId || !currentFile || !previewUrl) {
+      setPreviewBlob(null);
+      setPreviewStatus(null);
+      return;
+    }
+
+    const resolvedPreviewUrl = previewUrl;
+
+    const isDocxFile = currentFile.mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
+    if (!isDocxFile) {
+      setPreviewBlob(null);
+      setPreviewStatus(null);
+      return;
+    }
+
+    let cancelled = false;
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => {
+      controller.abort();
+    }, 15000);
+
+    async function loadPreviewBlob() {
+      setPreviewBlob(null);
+      setPreviewStatus('loading');
+
+      try {
+        const response = await fetch(resolvedPreviewUrl, { signal: controller.signal });
+        if (!response.ok) {
+          throw new Error(`Preview request failed: ${response.status}`);
+        }
+
+        const blob = await response.blob();
+
+        if (!cancelled) {
+          setPreviewBlob(blob);
+          setPreviewStatus(null);
+        }
+      } catch {
+        if (!cancelled) {
+          setPreviewBlob(null);
+          setPreviewStatus('error');
+        }
+      } finally {
+        window.clearTimeout(timeoutId);
+      }
+    }
+
+    void loadPreviewBlob();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+      window.clearTimeout(timeoutId);
+    };
+  }, [document?.currentFile?.mimeType, document?.id]);
 
   useEffect(() => {
     if (!replacementFile) {
@@ -679,9 +743,28 @@ export function DocumentDetailPage() {
   return (
     <section className="space-y-5">
       <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5 shadow-sm sm:px-4 sm:py-3">
-        <div className="flex items-start justify-between gap-2.5">
-          <div className="min-w-0 space-y-1.5">
-            <div className="flex flex-wrap items-center gap-1.5">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between lg:gap-2.5">
+          <div className="flex flex-col gap-2">
+            <Button type="button" variant="outline" size="sm" className="h-8 shrink-0 rounded-full px-3 text-xs" onClick={() => navigate(-1)}>
+              <ArrowLeft className="h-4 w-4" />
+              {t('documents.detail.back')}
+            </Button>
+
+            {canResubmit ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 shrink-0 rounded-full border-cyan-200 px-3 text-xs text-cyan-700 hover:bg-cyan-50 hover:text-cyan-700"
+                onClick={() => setEditDialogOpen(true)}
+              >
+                {t('documents.detail.updateDocument')}
+              </Button>
+            ) : null}
+          </div>
+
+          <div className="min-w-0 space-y-1.5 lg:ml-auto lg:w-auto lg:text-right">
+            <div className="flex flex-wrap items-center gap-1.5 lg:justify-end">
               <span className="rounded-full bg-cyan-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-700">
                 {currentDocument.typeName ?? types.find((type) => type.id === currentDocument.typeId)?.name ?? t('documents.preview.fallbackName')}
               </span>
@@ -703,32 +786,13 @@ export function DocumentDetailPage() {
               </p>
             </div>
           </div>
-
-          <div className="flex flex-col gap-2">
-            <Button type="button" variant="outline" size="sm" className="h-8 shrink-0 rounded-full px-3 text-xs" onClick={() => navigate(-1)}>
-              <ArrowLeft className="h-4 w-4" />
-              {t('documents.detail.back')}
-            </Button>
-
-            {canResubmit ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-8 shrink-0 rounded-full border-cyan-200 px-3 text-xs text-cyan-700 hover:bg-cyan-50 hover:text-cyan-700"
-                onClick={() => setEditDialogOpen(true)}
-              >
-                {t('documents.detail.updateDocument')}
-              </Button>
-            ) : null}
-          </div>
         </div>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1.55fr)_minmax(260px,0.45fr)]">
         <DocumentPreview
           title={currentDocument.name}
-          source={
+          source={buildDocumentPreviewSource(
             currentFile
               ? {
                   mimeType: currentFile.mimeType,
@@ -737,9 +801,11 @@ export function DocumentDetailPage() {
                   previewUrl: currentFile.previewUrl,
                   downloadUrl: currentFile.downloadUrl,
                   localUrl: null,
+                  localFile: previewBlob,
+                  docxPreviewStatus: previewStatus,
                 }
-              : null
-          }
+              : null,
+          )}
           className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
         />
 
@@ -1119,7 +1185,7 @@ export function DocumentDetailPage() {
                     ref={replacementFileInputRef}
                     type="file"
                     className="hidden"
-                    accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.gif,.webp,.svg,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*"
+                    accept=".pdf,.docx,.jpg,.jpeg,.png,.gif,.webp,.svg,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*"
                     onChange={(event) => setReplacementFile(event.target.files?.[0] ?? null)}
                   />
                 </label>

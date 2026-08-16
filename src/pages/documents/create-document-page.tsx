@@ -12,6 +12,7 @@ import { useAuth } from '@/features/auth/auth-context';
 import { useDocumentsMeta } from '@/features/documents/documents-meta-context';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { formatFileSize } from '@/lib/file-size';
+import { buildDocumentPreviewSource } from '@/lib/document-preview-source';
 import {
   requestJson,
   type DocumentStorageUploadResponse,
@@ -38,7 +39,6 @@ function resolveType(types: DocumentType[], typeCode: string | undefined) {
 function fileIsSupported(file: File) {
   const allowedMimeTypes = new Set([
     'application/pdf',
-    'application/msword',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     'image/jpeg',
     'image/png',
@@ -47,7 +47,7 @@ function fileIsSupported(file: File) {
     'image/svg+xml',
   ]);
 
-  const allowedExtensions = ['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'];
+  const allowedExtensions = ['pdf', 'docx', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'];
   const extension = file.name.split('.').pop()?.toLowerCase() ?? '';
 
   return allowedMimeTypes.has(file.type) || allowedExtensions.includes(extension);
@@ -117,7 +117,9 @@ export function CreateDocumentPage() {
     setUploadPreview(objectUrl);
     setFileInfo(file.name);
 
-    return () => URL.revokeObjectURL(objectUrl);
+    return () => {
+      URL.revokeObjectURL(objectUrl);
+    };
   }, [file]);
 
   useEffect(() => {
@@ -228,7 +230,7 @@ export function CreateDocumentPage() {
         body: uploadForm,
       });
 
-        const payload = {
+      const payload = {
         typeId: resolvedType.id,
         name: name.trim(),
         file: uploadedFile,
@@ -305,14 +307,14 @@ export function CreateDocumentPage() {
                 {t('documents.upload.title')}
               </span>
               <span className="mt-1 text-sm leading-6 text-slate-500">{t('documents.upload.subtitle')}</span>
-              <input
-                ref={fileInputRef}
-                type="file"
-                className="hidden"
-                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.gif,.webp,.svg,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*"
-                onChange={(event) => setFile(event.target.files?.[0] ?? null)}
-              />
-            </label>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  className="hidden"
+                  accept=".pdf,.docx,.jpg,.jpeg,.png,.gif,.webp,.svg,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*"
+                  onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+                />
+              </label>
           </div>
 
           {fileInfo ? (
@@ -498,14 +500,15 @@ export function CreateDocumentPage() {
         <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
           <DocumentPreview
             title={resolvedType.name}
-            source={{
+            source={buildDocumentPreviewSource({
               mimeType: file.type,
               originalFileName: file.name,
               sizeBytes: file.size,
               previewUrl: null,
               downloadUrl: null,
               localUrl: uploadPreview,
-            }}
+              localFile: file,
+            })}
           />
         </div>
       ) : null}

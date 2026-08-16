@@ -1,17 +1,11 @@
-import { Download, ExternalLink, FileText, FileImage, FileType2 } from 'lucide-react';
+import { useEffect, useRef } from 'react';
+import { Download, FileText, FileImage, FileType2, Loader2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { renderAsync } from 'docx-preview';
 
 import { buttonVariants } from '@/components/ui/button';
 import { formatFileSize } from '@/lib/file-size';
-
-type DocumentPreviewSource = {
-  mimeType: string | null;
-  originalFileName: string | null;
-  sizeBytes: number | string | null;
-  previewUrl: string | null;
-  downloadUrl: string | null;
-  localUrl: string | null;
-};
+import type { DocumentPreviewSource } from '@/lib/document-preview-source';
 
 type DocumentPreviewProps = {
   source: DocumentPreviewSource | null;
@@ -31,19 +25,59 @@ function isPdf(mimeType: string, fileName: string | null) {
   return mimeType === 'application/pdf' || getExtension(fileName) === 'pdf';
 }
 
-function isWord(mimeType: string, fileName: string | null) {
+function isDocx(mimeType: string, fileName: string | null) {
   const extension = getExtension(fileName);
 
   return (
-    mimeType === 'application/msword' ||
     mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
-    extension === 'doc' ||
     extension === 'docx'
   );
 }
 
-function getOfficeViewerUrl(url: string) {
-  return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(url)}`;
+function getOfficeViewerUrl(fileUrl: string) {
+  return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(fileUrl)}`;
+}
+
+function LocalDocxPreview({ file, title }: { file: Blob; title: string }) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function renderDocument() {
+      if (!containerRef.current) {
+        return;
+      }
+
+      containerRef.current.innerHTML = '';
+
+      try {
+        await renderAsync(file, containerRef.current, containerRef.current, {
+          className: 'docx',
+          hideWrapperOnPrint: false,
+          inWrapper: true,
+          ignoreFonts: false,
+          ignoreHeight: true,
+          ignoreWidth: true,
+        });
+      } catch {
+        if (!cancelled && containerRef.current) {
+          containerRef.current.textContent = title;
+        }
+      }
+    }
+
+    void renderDocument();
+
+    return () => {
+      cancelled = true;
+      if (containerRef.current) {
+        containerRef.current.innerHTML = '';
+      }
+    };
+  }, [file, title]);
+
+  return <div ref={containerRef} className="absolute inset-0 overflow-auto bg-white" />;
 }
 
 export function DocumentPreview({ source, title, className }: DocumentPreviewProps) {
@@ -53,10 +87,12 @@ export function DocumentPreview({ source, title, className }: DocumentPreviewPro
     return null;
   }
 
-  const { mimeType, originalFileName, previewUrl, downloadUrl, localUrl, sizeBytes } = source;
+  const { mimeType, originalFileName, previewUrl, downloadUrl, localUrl, localFile, sizeBytes } = source;
   const resolvedMimeType = mimeType || '';
   const resolvedUrl = previewUrl ?? localUrl;
-  const canOpenInOffice = Boolean(previewUrl) && isWord(resolvedMimeType, originalFileName);
+  const hasLocalWordPreview = Boolean(localFile) && isDocx(resolvedMimeType, originalFileName);
+  const isDocxPreviewLoading = source.docxPreviewStatus === 'loading';
+  const isDocxPreviewError = source.docxPreviewStatus === 'error';
 
   const previewNode = (() => {
     if (resolvedUrl && isImage(resolvedMimeType, originalFileName)) {
@@ -79,14 +115,50 @@ export function DocumentPreview({ source, title, className }: DocumentPreviewPro
       );
     }
 
-    if (canOpenInOffice && previewUrl) {
-      return (
-        <iframe
-          src={getOfficeViewerUrl(previewUrl)}
-          title={originalFileName ?? title ?? t('documents.preview.title')}
-          className="absolute inset-0 h-full w-full border-0 bg-white"
-        />
-      );
+    if (hasLocalWordPreview && localFile) {
+      return <LocalDocxPreview file={localFile} title={originalFileName ?? title ?? t('documents.preview.title')} />;
+    }
+
+    if (isDocx(resolvedMimeType, originalFileName)) {
+      if (resolvedUrl) {
+        return (
+          <iframe
+            src={getOfficeViewerUrl(resolvedUrl)}
+            title={originalFileName ?? title ?? t('documents.preview.title')}
+            className="absolute inset-0 h-full w-full border-0 bg-white"
+          />
+        );
+      }
+
+      if (isDocxPreviewLoading) {
+        return (
+          <div className="flex h-full flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-slate-200 bg-white p-6 text-center">
+            <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
+            <div className="space-y-1">
+              <p className="text-sm font-semibold text-slate-900">{t('documents.preview.loadingTitle')}</p>
+              <p className="max-w-md text-sm leading-6 text-slate-500">
+                {t('documents.preview.loadingDescription')}
+              </p>
+            </div>
+          </div>
+        );
+      }
+
+      if (isDocxPreviewError) {
+        return (
+          <div className="flex h-full flex-col items-center justify-center gap-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center">
+            <div className="grid h-16 w-16 place-items-center rounded-2xl bg-white text-slate-400 shadow-sm">
+              <FileType2 className="h-8 w-8" />
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm font-semibold text-slate-900">{t('documents.preview.unavailableTitle')}</p>
+              <p className="max-w-md text-sm leading-6 text-slate-500">
+                {t('documents.preview.wordUnavailable')}
+              </p>
+            </div>
+          </div>
+        );
+      }
     }
 
     return (
@@ -96,7 +168,7 @@ export function DocumentPreview({ source, title, className }: DocumentPreviewPro
             <FileImage className="h-8 w-8" />
           ) : isPdf(resolvedMimeType, originalFileName) ? (
             <FileText className="h-8 w-8" />
-          ) : isWord(resolvedMimeType, originalFileName) ? (
+          ) : isDocx(resolvedMimeType, originalFileName) ? (
             <FileType2 className="h-8 w-8" />
           ) : (
             <FileText className="h-8 w-8" />
@@ -105,7 +177,7 @@ export function DocumentPreview({ source, title, className }: DocumentPreviewPro
         <div className="space-y-1">
           <p className="text-sm font-semibold text-slate-900">{t('documents.preview.unavailableTitle')}</p>
           <p className="max-w-md text-sm leading-6 text-slate-500">
-            {isWord(resolvedMimeType, originalFileName)
+            {isDocx(resolvedMimeType, originalFileName)
               ? t('documents.preview.wordUnavailable')
               : t('documents.preview.genericUnavailable')}
           </p>
@@ -128,17 +200,6 @@ export function DocumentPreview({ source, title, className }: DocumentPreviewPro
         </div>
 
         <div className="grid w-full grid-cols-1 gap-1.5 sm:w-auto sm:grid-cols-none sm:flex sm:flex-wrap sm:justify-end">
-          {previewUrl ?? localUrl ? (
-            <a
-              href={previewUrl ?? localUrl ?? '#'}
-              target="_blank"
-              rel="noreferrer"
-              className={buttonVariants({ variant: 'outline' }) + ' w-full min-w-0 sm:w-auto'}
-            >
-              <ExternalLink className="h-3.5 w-3.5 shrink-0" />
-              <span className="min-w-0 truncate">{t('documents.preview.open')}</span>
-            </a>
-          ) : null}
           {downloadUrl ? (
             <a
               href={downloadUrl}
