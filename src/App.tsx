@@ -4,7 +4,7 @@ import { AppShell } from '@/components/layout/app-shell';
 import { PublicOnly } from '@/components/layout/public-only';
 import { RequireAuth } from '@/components/layout/require-auth';
 import { DocumentsMetaProvider } from '@/features/documents/documents-meta-context';
-import { DocumentsCategoryPage } from '@/pages/documents/category-page';
+import { DocumentsActionRequiredPage, DocumentsCategoryPage } from '@/pages/documents/category-page';
 import { CreateDocumentPage } from '@/pages/documents/create-document-page';
 import { DocumentDetailPage } from '@/pages/documents/document-detail-page';
 import { ForgotPasswordPage } from '@/pages/auth/forgot-password-page';
@@ -25,7 +25,7 @@ function App() {
           </RequireAuth>
         }
       >
-        <Route index element={<DocumentsCategoryPage />} />
+        <Route index element={<DocumentsActionRequiredPage />} />
         <Route path=":typeCode" element={<DocumentsCategoryPage />} />
         <Route path="create/:typeCode" element={<CreateDocumentPage />} />
         <Route path="document/:id" element={<DocumentDetailPage />} />

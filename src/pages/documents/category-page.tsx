@@ -42,6 +42,12 @@ const SORT_LABELS: Record<SortKey, string> = {
   revision_repeat_first: 'documents.sort.repeatFirst',
 };
 
+type DocumentsPageProps = {
+  requiresActionOnly?: boolean;
+  showTabs?: boolean;
+  showCreateButton?: boolean;
+};
+
 function resolveDocumentType(types: DocumentType[], typeCode: string | undefined) {
   if (!typeCode) {
     return types[0] ?? null;
@@ -66,6 +72,10 @@ function statusLabel(status: DocumentStatus, t: (key: string) => string) {
     return t('documents.status.completed');
   }
 
+  if (status === 'refunded') {
+    return t('documents.status.refunded');
+  }
+
   if (status === 'rejected') {
     return t('documents.status.rejected');
   }
@@ -73,13 +83,17 @@ function statusLabel(status: DocumentStatus, t: (key: string) => string) {
   return t('documents.status.inProgress');
 }
 
-export function DocumentsCategoryPage() {
+export function DocumentsCategoryPage({
+  requiresActionOnly = false,
+  showTabs = true,
+  showCreateButton = true,
+}: DocumentsPageProps = {}) {
   const { t } = useTranslation();
   const { types } = useDocumentsMeta();
   const { typeCode } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const activeType = useMemo(() => resolveDocumentType(types, typeCode), [types, typeCode]);
+  const activeType = useMemo(() => (requiresActionOnly ? null : resolveDocumentType(types, typeCode)), [requiresActionOnly, types, typeCode]);
   const [sortKey, setSortKey] = useState<SortKey>('created_desc');
   const [searchInput, setSearchInput] = useState('');
   const [documents, setDocuments] = useState<DocumentListItem[]>([]);
@@ -93,13 +107,17 @@ export function DocumentsCategoryPage() {
   const isFetchingRef = useRef(false);
 
   const debouncedSearch = useDebouncedValue(searchInput, 300);
-  const tab = searchParams.get('tab') === 'completed' ? 'completed' : 'active';
+  const tab = requiresActionOnly ? 'active' : searchParams.get('tab') === 'completed' ? 'completed' : 'active';
   const pageSize = 12;
   const activeSortConfig = SORT_CONFIG[sortKey];
   const activeSortLabel = SORT_LABELS[sortKey];
 
   function setTab(nextTab: CategoryTab) {
     const nextParams = new URLSearchParams(searchParams);
+
+    if (requiresActionOnly) {
+      return;
+    }
 
     if (nextTab === 'active') {
       nextParams.delete('tab');
@@ -132,12 +150,10 @@ export function DocumentsCategoryPage() {
     setDocuments([]);
     setPage(1);
     setHasMore(true);
-  }, [activeType, debouncedSearch, sortKey, tab]);
+  }, [activeType, debouncedSearch, requiresActionOnly, sortKey, tab]);
 
   useEffect(() => {
-    const resolvedType = activeType as DocumentType;
-
-    if (!activeType || !hasMore) {
+    if ((!requiresActionOnly && !activeType) || !hasMore) {
       return;
     }
 
@@ -153,12 +169,13 @@ export function DocumentsCategoryPage() {
       setError(null);
 
       try {
-        const response = await requestJson<DocumentListResponse>(
-          `/documents?typeId=${resolvedType.id}&statusGroup=${tab}&page=${page}&limit=${pageSize}&search=${encodeURIComponent(
-            debouncedSearch.trim(),
-          )}&sortBy=${activeSortConfig.sortBy}&sortDirection=${activeSortConfig.sortDirection}`,
-          { method: 'GET' },
-        );
+        const baseUrl = requiresActionOnly
+          ? `/documents?requiresAction=true&page=${page}&limit=${pageSize}&search=${encodeURIComponent(debouncedSearch.trim())}&sortBy=${activeSortConfig.sortBy}&sortDirection=${activeSortConfig.sortDirection}`
+          : `/documents?typeId=${(activeType as DocumentType).id}&statusGroup=${tab}&page=${page}&limit=${pageSize}&search=${encodeURIComponent(
+              debouncedSearch.trim(),
+            )}&sortBy=${activeSortConfig.sortBy}&sortDirection=${activeSortConfig.sortDirection}`;
+
+        const response = await requestJson<DocumentListResponse>(baseUrl, { method: 'GET' });
 
         if (cancelled) {
           return;
@@ -183,7 +200,7 @@ export function DocumentsCategoryPage() {
     return () => {
       cancelled = true;
     };
-  }, [activeType, activeSortConfig.sortBy, activeSortConfig.sortDirection, debouncedSearch, hasMore, page, pageSize, tab, t]);
+  }, [activeSortConfig.sortBy, activeSortConfig.sortDirection, activeType, debouncedSearch, hasMore, page, pageSize, requiresActionOnly, tab, t]);
 
   useEffect(() => {
     if (!hasMore || loading || error) {
@@ -215,11 +232,11 @@ export function DocumentsCategoryPage() {
     };
   }, [error, hasMore, loading]);
 
-  if (typeCode && !activeType && types.length > 0) {
+  if (!requiresActionOnly && typeCode && !activeType && types.length > 0) {
     return <Navigate to="/" replace />;
   }
 
-  if (!activeType) {
+  if (!requiresActionOnly && !activeType) {
     return (
       <div className="grid min-h-[calc(100vh-8rem)] place-items-center rounded-3xl border border-dashed border-slate-200 bg-white p-8 shadow-sm">
         <p className="text-sm text-slate-500">{t('documents.errors.typeNotFound')}</p>
@@ -230,50 +247,46 @@ export function DocumentsCategoryPage() {
   return (
     <section className="space-y-6">
       <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-cyan-700">
-              {activeType.name}
-            </p>
-            <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">
-              {tab === 'completed' ? t('documents.completedTitle') : t('documents.activeTitle')}
-            </h1>
-            <p className="mt-2 max-w-2xl text-sm leading-7 text-slate-600">
-              {tab === 'completed'
-                ? t('documents.completedDescription')
-                : t('documents.activeDescription')}
-            </p>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0">
+            {requiresActionOnly ? (
+              <>
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-cyan-700">
+                  {t('layout.actionRequired')}
+                </p>
+                <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">
+                  {t('documents.actionRequiredTitle')}
+                </h1>
+                <p className="mt-2 max-w-2xl text-sm leading-7 text-slate-600">
+                  {t('documents.actionRequiredDescription')}
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-cyan-700">{activeType?.name ?? t('layout.noTypes')}</p>
+                <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">
+                  {tab === 'completed' ? t('documents.tabs.completed') : t('documents.tabs.active')}
+                </h1>
+                <p className="mt-2 max-w-2xl text-sm leading-7 text-slate-600">
+                  {tab === 'completed'
+                    ? t('documents.completedDescription')
+                    : t('documents.activeDescription')}
+                </p>
+              </>
+            )}
           </div>
 
-          <div className="flex flex-wrap items-center justify-end gap-2 self-end lg:self-auto">
-            <button
-              type="button"
-              onClick={() => setTab('active')}
-              className={[
-                'rounded-full px-4 py-2 text-sm font-medium transition-all',
-                tab === 'active'
-                  ? 'bg-slate-900 text-white shadow-sm'
-                  : 'border border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50',
-              ].join(' ')}
+          {showCreateButton && activeType ? (
+            <Link
+              to={`/create/${activeType.code}`}
+              className="inline-flex h-11 shrink-0 items-center justify-center rounded-full bg-primary px-5 text-sm font-medium !text-white shadow-[0_16px_40px_oklch(0.52_0.105_223.128/0.18)] transition-colors hover:bg-primary-dark hover:!text-white"
             >
-              {t('documents.tabs.active')}
-            </button>
-            <button
-              type="button"
-              onClick={() => setTab('completed')}
-              className={[
-                'rounded-full px-4 py-2 text-sm font-medium transition-all',
-                tab === 'completed'
-                  ? 'bg-slate-900 text-white shadow-sm'
-                  : 'border border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50',
-              ].join(' ')}
-            >
-              {t('documents.tabs.completed')}
-            </button>
-          </div>
+              {t('documents.create')}
+            </Link>
+          ) : null}
         </div>
 
-        <div className="mt-6 grid gap-3 lg:grid-cols-[1.2fr_0.8fr_auto]">
+        <div className="mt-6 grid gap-3 lg:grid-cols-[1.2fr_0.8fr] items-center">
           <label className="relative block">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <Input
@@ -332,15 +345,47 @@ export function DocumentsCategoryPage() {
               </div>
             ) : null}
           </div>
-
-          <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2">
-            <SlidersHorizontal className="h-4 w-4 text-slate-500" />
-            <span className="text-sm text-slate-600">
-              {t('documents.visibleCount', { count: documents.length })}
-            </span>
-          </div>
         </div>
       </div>
+
+      {showTabs ? (
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="grid grid-cols-2">
+            <button
+              type="button"
+              onClick={() => setTab('active')}
+              className={[
+                'group relative flex items-center justify-center px-4 py-4 text-sm font-medium text-slate-700 transition-all duration-300 ease-out',
+                tab === 'active' ? 'bg-slate-50 text-slate-950' : 'hover:bg-slate-50 hover:text-slate-950',
+              ].join(' ')}
+            >
+              <span>{t('documents.tabs.active')}</span>
+              <span
+                className={[
+                  'absolute inset-x-0 bottom-0 h-0.5 origin-center rounded-full bg-cyan-300 transition-transform duration-300 ease-out',
+                  tab === 'active' ? 'scale-x-100' : 'scale-x-0 group-hover:scale-x-60',
+                ].join(' ')}
+              />
+            </button>
+            <button
+              type="button"
+              onClick={() => setTab('completed')}
+              className={[
+                'group relative flex items-center justify-center px-4 py-4 text-sm font-medium text-slate-700 transition-all duration-300 ease-out',
+                tab === 'completed' ? 'bg-slate-50 text-slate-950' : 'hover:bg-slate-50 hover:text-slate-950',
+              ].join(' ')}
+            >
+              <span>{t('documents.tabs.completed')}</span>
+              <span
+                className={[
+                  'absolute inset-x-0 bottom-0 h-0.5 origin-center rounded-full bg-cyan-300 transition-transform duration-300 ease-out',
+                  tab === 'completed' ? 'scale-x-100' : 'scale-x-0 group-hover:scale-x-60',
+                ].join(' ')}
+              />
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {loading && page === 1 ? (
         <div className="grid grid-cols-1 gap-4">
@@ -358,14 +403,18 @@ export function DocumentsCategoryPage() {
       ) : documents.length === 0 ? (
         <div className="rounded-3xl border border-dashed border-slate-200 bg-white p-8 text-center shadow-sm">
           <Sparkles className="mx-auto h-8 w-8 text-slate-300" />
-          <h2 className="mt-4 text-xl font-semibold text-slate-950">{t('documents.empty.title')}</h2>
-          <p className="mt-2 text-sm text-slate-500">{t('documents.empty.description')}</p>
+          <h2 className="mt-4 text-xl font-semibold text-slate-950">
+            {requiresActionOnly ? t('documents.actionRequiredEmptyTitle') : t('documents.empty.title')}
+          </h2>
+          <p className="mt-2 text-sm text-slate-500">
+            {requiresActionOnly ? t('documents.actionRequiredEmpty') : t('documents.empty.description')}
+          </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4">
           {documents.map((document) => {
             const awaitingLabel =
-              document.status === 'rejected'
+              document.status === 'rejected' || document.status === 'refunded'
                 ? t('documents.awaiting.creator', { name: document.createdByFullName })
                 : document.currentActionFullName
                   ? t('documents.awaiting.user', { name: document.currentActionFullName })
@@ -381,7 +430,7 @@ export function DocumentsCategoryPage() {
                   <div className="min-w-0">
                     <div className="flex flex-wrap gap-2">
                       <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
-                        {document.typeName ?? activeType.name}
+                        {document.typeName ?? activeType?.name ?? t('layout.noTypes')}
                       </span>
                       <span className="rounded-full bg-cyan-50 px-2.5 py-1 text-xs font-medium text-cyan-800">
                         {document.revisionType === 'new'
@@ -423,7 +472,7 @@ export function DocumentsCategoryPage() {
                   </div>
                 </div>
 
-                {document.lastRejectionReason ? (
+                {document.status === 'rejected' && document.lastRejectionReason ? (
                   <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
                     <p className="font-medium">{t('documents.labels.rejectionReason')}</p>
                     <p className="mt-1 leading-6">{document.lastRejectionReason}</p>
@@ -448,4 +497,8 @@ export function DocumentsCategoryPage() {
       ) : null}
     </section>
   );
+}
+
+export function DocumentsActionRequiredPage() {
+  return <DocumentsCategoryPage requiresActionOnly showTabs={false} showCreateButton={false} />;
 }

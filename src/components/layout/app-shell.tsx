@@ -7,7 +7,7 @@ import { Sidebar } from '@/components/layout/sidebar';
 import { useDocumentsMeta } from '@/features/documents/documents-meta-context';
 
 export function AppShell() {
-  const { types, isLoading, homeType } = useDocumentsMeta();
+  const { types, isLoading } = useDocumentsMeta();
   const navigate = useNavigate();
   const location = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(() => window.innerWidth >= 768);
@@ -16,19 +16,19 @@ export function AppShell() {
     const path = location.pathname;
 
     if (path.startsWith('/create/')) {
-      return path.split('/')[2] ?? homeType?.code ?? null;
+      return path.split('/')[2] ?? null;
     }
 
     const segment = path.split('/')[1];
 
-    if (!segment) {
-      return homeType?.code ?? null;
+    if (!segment || segment === 'document') {
+      return null;
     }
 
     return segment;
-  }, [homeType?.code, location.pathname]);
+  }, [location.pathname]);
 
-  const activeType = types.find((type) => type.code === activeTypeCode) ?? null;
+  const isActionRequiredActive = location.pathname === '/' || location.pathname.startsWith('/document/');
 
   useEffect(() => {
     const handleResize = () => {
@@ -46,7 +46,7 @@ export function AppShell() {
 
   if (isLoading) {
     return (
-      <div className="grid min-h-screen place-items-center bg-slate-50 px-6">
+      <div className="grid min-h-screen place-items-center bg-white px-6">
         <div className="rounded-2xl border border-slate-200 bg-white px-6 py-4 text-sm text-slate-600 shadow-sm">
           Завантажуємо типи документів...
         </div>
@@ -55,19 +55,15 @@ export function AppShell() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-[linear-gradient(180deg,#ffffff_0%,#f7f9fd_100%)]">
       <Sidebar
         isOpen={drawerOpen}
         onClose={() => setDrawerOpen(false)}
         types={types}
         activeTypeCode={activeTypeCode}
-        homeTypeCode={homeType?.code ?? null}
+        isActionRequiredActive={isActionRequiredActive}
+        onOpenActionRequired={() => navigate('/', { replace: false })}
         onSelectType={(code) => {
-          if (homeType && code === homeType.code) {
-            navigate('/', { replace: false });
-            return;
-          }
-
           navigate(`/${code}`, { replace: false });
         }}
       />
@@ -81,10 +77,9 @@ export function AppShell() {
         <Header
           isOpen={drawerOpen}
           onToggle={() => setDrawerOpen((value) => !value)}
-          activeType={activeType}
         />
         <main className="p-4 md:p-6">
-          <Outlet context={{ types, homeType }} />
+          <Outlet context={{ types }} />
         </main>
       </div>
     </div>

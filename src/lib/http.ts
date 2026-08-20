@@ -36,7 +36,7 @@ export type DocumentType = {
 
 export type DocumentRevisionType = 'new' | 'repeat';
 
-export type DocumentStatus = 'in_progress' | 'rejected' | 'completed';
+export type DocumentStatus = 'in_progress' | 'rejected' | 'completed' | 'refunded';
 
 export type DocumentParticipantType = 'signer' | 'additional_approver';
 
@@ -133,6 +133,14 @@ export type DocumentDetailHistoryItem = {
   createdAt: string;
 };
 
+export type DocumentDetailComment = {
+  id: number;
+  actorUserId: number;
+  actorFullName: string;
+  message: string;
+  createdAt: string;
+};
+
 export type DocumentDetailResponse = {
   id: number;
   typeId: number;
@@ -151,6 +159,7 @@ export type DocumentDetailResponse = {
   updatedAt: string;
   currentFile: DocumentDetailFile | null;
   participants: DocumentDetailParticipant[];
+  comments: DocumentDetailComment[];
   history: DocumentDetailHistoryItem[];
   requiresAction: boolean;
   myParticipantId: number | null;

@@ -252,11 +252,7 @@ export function CreateDocumentPage() {
         variant: 'success',
       });
 
-      if (homeType && resolvedType.code === homeType.code) {
-        navigate('/', { replace: true });
-      } else {
-        navigate(`/${resolvedType.code}`, { replace: true });
-      }
+      navigate(`/${resolvedType.code}`, { replace: true });
     } catch (error) {
       showToast({
         title: t('documents.createFailedTitle'),

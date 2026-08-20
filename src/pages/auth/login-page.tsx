@@ -35,8 +35,8 @@ export function LoginPage() {
   }
 
   return (
-    <main className="grid min-h-screen place-items-center bg-gradient-to-br from-slate-50 via-white to-sky-50 px-4 py-8">
-      <section className="w-full max-w-md rounded-3xl border border-slate-200 bg-white/85 p-8 shadow-[0_24px_90px_rgba(15,23,42,0.12)] backdrop-blur">
+    <main className="grid min-h-screen place-items-center bg-[radial-gradient(circle_at_top,oklch(0.52_0.105_223.128/0.08),transparent_36%),linear-gradient(180deg,#ffffff_0%,#f7f9fd_100%)] px-4 py-8">
+      <section className="w-full max-w-md rounded-[28px] border border-slate-200 bg-white p-8 shadow-[0_24px_90px_rgba(15,23,42,0.12)]">
         <p className="text-xs font-semibold uppercase tracking-[0.24em] text-cyan-700">
           {t('app.name')}
         </p>

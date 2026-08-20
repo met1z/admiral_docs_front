@@ -34,10 +34,6 @@ function isDocx(mimeType: string, fileName: string | null) {
   );
 }
 
-function getOfficeViewerUrl(fileUrl: string) {
-  return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(fileUrl)}`;
-}
-
 function LocalDocxPreview({ file, title }: { file: Blob; title: string }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
 
@@ -76,6 +72,59 @@ function LocalDocxPreview({ file, title }: { file: Blob; title: string }) {
       }
     };
   }, [file, title]);
+
+  return <div ref={containerRef} className="absolute inset-0 overflow-auto bg-white" />;
+}
+
+function RemoteDocxPreview({ url, title }: { url: string; title: string }) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function renderDocument() {
+      if (!containerRef.current) {
+        return;
+      }
+
+      containerRef.current.innerHTML = '';
+
+      try {
+        const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error('Failed to load document');
+        }
+
+        const file = await response.blob();
+
+        if (cancelled || !containerRef.current) {
+          return;
+        }
+
+        await renderAsync(file, containerRef.current, containerRef.current, {
+          className: 'docx',
+          hideWrapperOnPrint: false,
+          inWrapper: true,
+          ignoreFonts: false,
+          ignoreHeight: true,
+          ignoreWidth: true,
+        });
+      } catch {
+        if (!cancelled && containerRef.current) {
+          containerRef.current.textContent = title;
+        }
+      }
+    }
+
+    void renderDocument();
+
+    return () => {
+      cancelled = true;
+      if (containerRef.current) {
+        containerRef.current.innerHTML = '';
+      }
+    };
+  }, [title, url]);
 
   return <div ref={containerRef} className="absolute inset-0 overflow-auto bg-white" />;
 }
@@ -121,13 +170,7 @@ export function DocumentPreview({ source, title, className }: DocumentPreviewPro
 
     if (isDocx(resolvedMimeType, originalFileName)) {
       if (resolvedUrl) {
-        return (
-          <iframe
-            src={getOfficeViewerUrl(resolvedUrl)}
-            title={originalFileName ?? title ?? t('documents.preview.title')}
-            className="absolute inset-0 h-full w-full border-0 bg-white"
-          />
-        );
+        return <RemoteDocxPreview url={resolvedUrl} title={originalFileName ?? title ?? t('documents.preview.title')} />;
       }
 
       if (isDocxPreviewLoading) {

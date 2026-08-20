@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
-import { ArrowLeft, CheckCircle2, Loader2, Search, Sparkles, Trash2, Upload, X } from 'lucide-react';
+import { CheckCircle2, History, Loader2, MessageSquareText, Search, Send, Sparkles, Trash2, Upload, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 
@@ -14,6 +14,7 @@ import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { buildDocumentPreviewSource } from '@/lib/document-preview-source';
 import {
   requestJson,
+  type DocumentDetailComment,
   type DocumentDetailHistoryItem,
   type DocumentDetailResponse,
   type DocumentStorageUploadResponse,
@@ -67,6 +68,10 @@ function statusLabel(status: DocumentDetailResponse['status'], t: (key: string) 
     return t('documents.status.completed');
   }
 
+  if (status === 'refunded') {
+    return t('documents.status.refunded');
+  }
+
   if (status === 'rejected') {
     return t('documents.status.rejected');
   }
@@ -98,82 +103,6 @@ function participantTypeLabel(
   }
 
   return t('documents.participantType.signer');
-}
-
-function historyEventLabel(eventType: DocumentDetailHistoryItem['eventType'], t: (key: string) => string) {
-  switch (eventType) {
-    case 'created':
-      return t('documents.detail.eventCreated');
-    case 'deleted':
-      return t('documents.detail.eventDeleted');
-    case 'name_replaced':
-      return t('documents.detail.eventNameReplaced');
-    case 'file_replaced':
-      return t('documents.detail.eventFileReplaced');
-    case 'sent_for_signing':
-      return t('documents.detail.eventSentForSigning');
-    case 'signed':
-      return t('documents.detail.eventSigned');
-    case 'sent_for_additional_approval':
-      return t('documents.detail.eventSentForAdditionalApproval');
-    case 'additional_approval_rejected':
-      return t('documents.detail.eventAdditionalApprovalRejected');
-    case 'additional_approval_accepted':
-      return t('documents.detail.eventAdditionalApprovalAccepted');
-    case 'rejected':
-      return t('documents.detail.eventRejected');
-    case 'returned_for_revision':
-      return t('documents.detail.eventReturnedForRevision');
-    case 'resubmitted':
-      return t('documents.detail.eventResubmitted');
-    case 'completed':
-      return t('documents.detail.eventCompleted');
-    default:
-      return t('documents.detail.eventUnknown');
-  }
-}
-
-function historyTone(eventType: DocumentDetailHistoryItem['eventType']) {
-  if (eventType === 'rejected' || eventType === 'additional_approval_rejected' || eventType === 'deleted') {
-    return 'border-rose-200 bg-rose-50 text-rose-700';
-  }
-
-  if (eventType === 'completed' || eventType === 'signed' || eventType === 'additional_approval_accepted') {
-    return 'border-emerald-200 bg-emerald-50 text-emerald-700';
-  }
-
-  if (eventType === 'returned_for_revision' || eventType === 'sent_for_additional_approval') {
-    return 'border-amber-200 bg-amber-50 text-amber-700';
-  }
-
-  return 'border-slate-200 bg-slate-50 text-slate-600';
-}
-
-function historyDescription(event: DocumentDetailHistoryItem, t: (key: string) => string) {
-  const actor = event.actorFullName;
-  const target = event.targetFullName;
-  const eventLabel = historyEventLabel(event.eventType, t);
-
-  switch (event.eventType) {
-    case 'created':
-    case 'deleted':
-    case 'name_replaced':
-    case 'file_replaced':
-    case 'resubmitted':
-    case 'completed':
-      return `${actor} · ${eventLabel}`;
-    case 'sent_for_signing':
-      return `${actor} · ${t('documents.detail.eventSentForSigning')}`;
-    case 'signed':
-    case 'additional_approval_accepted':
-    case 'sent_for_additional_approval':
-    case 'additional_approval_rejected':
-    case 'rejected':
-    case 'returned_for_revision':
-      return target ? `${actor} · ${eventLabel} · ${target}` : `${actor} · ${eventLabel}`;
-    default:
-      return `${actor} · ${eventLabel}`;
-  }
 }
 
 function groupAdditionalApproversByParentParticipant(
@@ -222,13 +151,77 @@ function groupAdditionalApproversByParentParticipant(
   return groups;
 }
 
+function formatHistoryDescription(event: DocumentDetailHistoryItem, t: (key: string) => string) {
+  const actor = event.actorFullName;
+  const target = event.targetFullName;
+
+  switch (event.eventType) {
+    case 'created':
+      return `${actor} · ${t('documents.detail.eventCreated')}`;
+    case 'deleted':
+      return `${actor} · ${t('documents.detail.eventDeleted')}`;
+    case 'name_replaced':
+      return `${actor} · ${t('documents.detail.eventNameReplaced')}`;
+    case 'file_replaced':
+      return `${actor} · ${t('documents.detail.eventFileReplaced')}`;
+    case 'sent_for_signing':
+      return `${actor} · ${t('documents.detail.eventSentForSigning')}`;
+    case 'signed':
+      return `${actor} · ${t('documents.detail.eventSigned')}`;
+    case 'sent_for_additional_approval':
+      return target
+        ? `${actor} · ${t('documents.detail.eventSentForAdditionalApproval')} · ${target}`
+        : `${actor} · ${t('documents.detail.eventSentForAdditionalApproval')}`;
+    case 'additional_approval_rejected':
+      return target
+        ? `${actor} · ${t('documents.detail.eventAdditionalApprovalRejected')} · ${target}`
+        : `${actor} · ${t('documents.detail.eventAdditionalApprovalRejected')}`;
+    case 'additional_approval_accepted':
+      return target
+        ? `${actor} · ${t('documents.detail.eventAdditionalApprovalAccepted')} · ${target}`
+        : `${actor} · ${t('documents.detail.eventAdditionalApprovalAccepted')}`;
+    case 'rejected':
+      return target ? `${actor} · ${t('documents.detail.eventRejected')} · ${target}` : `${actor} · ${t('documents.detail.eventRejected')}`;
+    case 'returned_for_revision':
+      return target
+        ? `${actor} · ${t('documents.detail.eventReturnedForRevision')} · ${target}`
+        : `${actor} · ${t('documents.detail.eventReturnedForRevision')}`;
+    case 'resubmitted':
+      return `${actor} · ${t('documents.detail.eventResubmitted')}`;
+    case 'completed':
+      return `${actor} · ${t('documents.detail.eventCompleted')}`;
+    case 'comment_added':
+      return `${actor} · ${t('documents.detail.eventCommentAdded')}`;
+    case 'refunded':
+      return `${actor} · ${t('documents.detail.eventRefunded')}`;
+    default:
+      return `${actor} · ${t('documents.detail.eventUnknown')}`;
+  }
+}
+
+function historyTone(eventType: DocumentDetailHistoryItem['eventType']) {
+  if (eventType === 'rejected' || eventType === 'additional_approval_rejected' || eventType === 'deleted') {
+    return 'border-rose-200 bg-rose-50 text-rose-700';
+  }
+
+  if (eventType === 'completed' || eventType === 'signed' || eventType === 'additional_approval_accepted') {
+    return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+  }
+
+  if (eventType === 'returned_for_revision' || eventType === 'sent_for_additional_approval' || eventType === 'refunded') {
+    return 'border-amber-200 bg-amber-50 text-amber-700';
+  }
+
+  return 'border-slate-200 bg-slate-50 text-slate-600';
+}
+
 export function DocumentDetailPage() {
   const { t } = useTranslation();
   const { types } = useDocumentsMeta();
   const { user } = useAuth();
   const { showToast } = useToast();
-  const { id } = useParams();
   const navigate = useNavigate();
+  const { id } = useParams();
 
   const [document, setDocument] = useState<DocumentDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -238,16 +231,21 @@ export function DocumentDetailPage() {
   const [rejectReason, setRejectReason] = useState('');
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [additionalApprovalDialogOpen, setAdditionalApprovalDialogOpen] = useState(false);
-  const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<'comments' | 'history'>('comments');
+  const [commentDraft, setCommentDraft] = useState('');
+  const [commentSubmitting, setCommentSubmitting] = useState(false);
+  const [refunding, setRefunding] = useState(false);
+  const [deletingDocument, setDeletingDocument] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [renameValue, setRenameValue] = useState('');
   const [replacementFile, setReplacementFile] = useState<File | null>(null);
   const [replacementPreview, setReplacementPreview] = useState<string | null>(null);
-  const [renaming, setRenaming] = useState(false);
-  const [replacingFile, setReplacingFile] = useState(false);
+  const [updatingDocument, setUpdatingDocument] = useState(false);
   const [approvalSearchInput, setApprovalSearchInput] = useState('');
   const [approvalResults, setApprovalResults] = useState<UserSearchItem[]>([]);
   const [approvalSelected, setApprovalSelected] = useState<UserSearchItem[]>([]);
+  const [approvalReason, setApprovalReason] = useState('');
   const [approvalLoading, setApprovalLoading] = useState(false);
   const [approvalSubmitting, setApprovalSubmitting] = useState(false);
   const [previewBlob, setPreviewBlob] = useState<Blob | null>(null);
@@ -321,7 +319,8 @@ export function DocumentDetailPage() {
 
         if (!cancelled) {
           const selectedIds = new Set(approvalSelected.map((participant) => participant.id));
-          setApprovalResults(results.filter((result) => !selectedIds.has(result.id)));
+          const participantIds = new Set(currentDocument.participants.map((participant) => participant.userId));
+          setApprovalResults(results.filter((result) => !selectedIds.has(result.id) && !participantIds.has(result.id)));
         }
       } catch (searchError) {
         if (!cancelled) {
@@ -345,7 +344,7 @@ export function DocumentDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [approvalSelected, additionalApprovalDialogOpen, debouncedApprovalSearch, showToast, t]);
+  }, [approvalSelected, additionalApprovalDialogOpen, debouncedApprovalSearch, document?.participants, showToast, t]);
 
   useEffect(() => {
     if (!document) {
@@ -355,6 +354,8 @@ export function DocumentDetailPage() {
     setRenameValue(document.name);
     setReplacementFile(null);
     setReplacementPreview(null);
+    setActiveTab('comments');
+    setCommentDraft('');
   }, [document?.id, document?.name]);
 
   useEffect(() => {
@@ -452,10 +453,6 @@ export function DocumentDetailPage() {
         <div className="max-w-md text-center">
           <Sparkles className="mx-auto h-8 w-8 text-slate-300" />
           <p className="mt-4 text-sm text-slate-500">{error ?? t('documents.detail.loadFailed')}</p>
-          <Button type="button" variant="outline" className="mt-6" onClick={() => navigate(-1)}>
-            <ArrowLeft className="h-4 w-4" />
-            {t('documents.detail.back')}
-          </Button>
         </div>
       </div>
     );
@@ -467,16 +464,18 @@ export function DocumentDetailPage() {
   const signerParticipants = sortedParticipants.filter((participant) => participant.participantType === 'signer');
   const additionalApproverGroups = groupAdditionalApproversByParentParticipant(sortedParticipants, currentDocument.history);
   const currentActionParticipant = sortedParticipants.find((participant) => participant.isCurrentAction) ?? null;
-  const canResubmit = currentDocument.status === 'rejected' && user?.id === currentDocument.createdByUserId;
+  const isInitiator = user?.id === currentDocument.createdByUserId;
+  const canEditDocument = isInitiator && (currentDocument.status === 'rejected' || currentDocument.status === 'refunded');
+  const canResubmit = isInitiator && (currentDocument.status === 'rejected' || currentDocument.status === 'refunded');
+  const noParticipantsSigned = currentDocument.participants.every((participant) => participant.signedStatus === 'pending');
+  const canRefund = isInitiator && currentDocument.status === 'in_progress' && noParticipantsSigned;
+  const canDelete = isInitiator && (currentDocument.status === 'rejected' || currentDocument.status === 'refunded');
   const history = [...currentDocument.history].sort((left, right) => {
     const leftTime = new Date(left.createdAt).getTime();
     const rightTime = new Date(right.createdAt).getTime();
 
     return leftTime - rightTime || left.id - right.id;
   });
-  const historyPreviewLimit = 4;
-  const visibleHistory = history.slice(-historyPreviewLimit);
-  const hiddenHistoryCount = Math.max(history.length - historyPreviewLimit, 0);
   const replacementFileError =
     replacementFile && (!fileIsSupported(replacementFile) || replacementFile.size > 40 * 1024 * 1024)
       ? !fileIsSupported(replacementFile)
@@ -488,8 +487,10 @@ export function DocumentDetailPage() {
     setDocument(nextDetail);
   }
 
-  async function handleRename() {
+  async function handleUpdateDocument() {
     const nextName = renameValue.trim();
+    const hasNameChange = nextName !== currentDocument.name;
+    const hasFileChange = Boolean(replacementFile);
 
     if (nextName.length < 3) {
       showToast({
@@ -500,48 +501,11 @@ export function DocumentDetailPage() {
       return;
     }
 
-    if (nextName === currentDocument.name) {
+    if (!hasNameChange && !hasFileChange) {
       return;
     }
 
-    setRenaming(true);
-
-    try {
-      const response = await requestJson<DocumentDetailResponse>(`/documents/${currentDocument.id}/name`, {
-        method: 'PATCH',
-        body: JSON.stringify({ name: nextName }),
-      });
-
-      await refreshDetail(response);
-      setEditDialogOpen(false);
-      showToast({
-        title: t('documents.detail.nameUpdatedTitle'),
-        description: t('documents.detail.nameUpdatedDescription'),
-        variant: 'success',
-      });
-    } catch (renameError) {
-      const description = renameError instanceof Error ? renameError.message : null;
-      showToast({
-        title: t('documents.detail.actionFailedTitle'),
-        ...(description ? { description } : {}),
-        variant: 'error',
-      });
-    } finally {
-      setRenaming(false);
-    }
-  }
-
-  async function handleReplaceFile() {
-    if (!replacementFile) {
-      showToast({
-        title: t('documents.detail.actionFailedTitle'),
-        description: t('documents.validation.fileRequired'),
-        variant: 'error',
-      });
-      return;
-    }
-
-    if (!fileIsSupported(replacementFile)) {
+    if (replacementFile && !fileIsSupported(replacementFile)) {
       showToast({
         title: t('documents.detail.actionFailedTitle'),
         description: t('documents.validation.fileType'),
@@ -550,7 +514,7 @@ export function DocumentDetailPage() {
       return;
     }
 
-    if (replacementFile.size > 40 * 1024 * 1024) {
+    if (replacementFile && replacementFile.size > 40 * 1024 * 1024) {
       showToast({
         title: t('documents.detail.actionFailedTitle'),
         description: t('documents.validation.fileSize'),
@@ -559,39 +523,114 @@ export function DocumentDetailPage() {
       return;
     }
 
-    setReplacingFile(true);
+    setUpdatingDocument(true);
 
     try {
-      const uploadForm = new FormData();
-      uploadForm.append('file', replacementFile);
+      let latestDetail: DocumentDetailResponse | null = null;
 
-      const uploadedFile = await requestJson<DocumentStorageUploadResponse>('/documents/storage/upload', {
-        method: 'POST',
-        body: uploadForm,
-      });
+      if (hasNameChange) {
+        latestDetail = await requestJson<DocumentDetailResponse>(`/documents/${currentDocument.id}/name`, {
+          method: 'PATCH',
+          body: JSON.stringify({ name: nextName }),
+        });
+      }
 
-      const response = await requestJson<DocumentDetailResponse>(`/documents/${currentDocument.id}/file`, {
-        method: 'PATCH',
-        body: JSON.stringify({ file: uploadedFile }),
-      });
+      if (replacementFile) {
+        const uploadForm = new FormData();
+        uploadForm.append('file', replacementFile);
 
-      await refreshDetail(response);
+        const uploadedFile = await requestJson<DocumentStorageUploadResponse>('/documents/storage/upload', {
+          method: 'POST',
+          body: uploadForm,
+        });
+
+        latestDetail = await requestJson<DocumentDetailResponse>(`/documents/${currentDocument.id}/file`, {
+          method: 'PATCH',
+          body: JSON.stringify({ file: uploadedFile }),
+        });
+      }
+
+      if (latestDetail) {
+        await refreshDetail(latestDetail);
+      }
+
       setReplacementFile(null);
       setEditDialogOpen(false);
       showToast({
-        title: t('documents.detail.fileUpdatedTitle'),
-        description: t('documents.detail.fileUpdatedDescription'),
+        title: t('documents.detail.documentUpdatedTitle'),
+        description: t('documents.detail.documentUpdatedDescription'),
         variant: 'success',
       });
-    } catch (replaceError) {
-      const description = replaceError instanceof Error ? replaceError.message : null;
+    } catch (updateError) {
+      const description = updateError instanceof Error ? updateError.message : null;
       showToast({
         title: t('documents.detail.actionFailedTitle'),
         ...(description ? { description } : {}),
         variant: 'error',
       });
     } finally {
-      setReplacingFile(false);
+      setUpdatingDocument(false);
+    }
+  }
+
+  async function handleRefundDocument() {
+    if (!canRefund) {
+      return;
+    }
+
+    setRefunding(true);
+
+    try {
+      const response = await requestJson<DocumentDetailResponse>(`/documents/${currentDocument.id}/refund`, {
+        method: 'POST',
+      });
+
+      await refreshDetail(response);
+      showToast({
+        title: t('documents.detail.refundDocumentSuccessTitle'),
+        description: t('documents.detail.refundDocumentSuccessDescription'),
+        variant: 'success',
+      });
+    } catch (refundError) {
+      const description = refundError instanceof Error ? refundError.message : null;
+      showToast({
+        title: t('documents.detail.actionFailedTitle'),
+        ...(description ? { description } : {}),
+        variant: 'error',
+      });
+    } finally {
+      setRefunding(false);
+    }
+  }
+
+  async function handleDeleteDocument() {
+    if (!canDelete) {
+      return;
+    }
+
+    setDeletingDocument(true);
+
+    try {
+      await requestJson<{ deleted: true }>(`/documents/${currentDocument.id}`, {
+        method: 'DELETE',
+      });
+
+      showToast({
+        title: t('documents.detail.deleteDocumentSuccessTitle'),
+        description: t('documents.detail.deleteDocumentSuccessDescription'),
+        variant: 'success',
+      });
+      navigate('/', { replace: true });
+    } catch (deleteError) {
+      const description = deleteError instanceof Error ? deleteError.message : null;
+      showToast({
+        title: t('documents.detail.actionFailedTitle'),
+        ...(description ? { description } : {}),
+        variant: 'error',
+      });
+    } finally {
+      setDeletingDocument(false);
+      setDeleteDialogOpen(false);
     }
   }
 
@@ -705,6 +744,17 @@ export function DocumentDetailPage() {
       return;
     }
 
+    const reason = approvalReason.trim();
+
+    if (reason.length < 3) {
+      showToast({
+        title: t('documents.detail.actionFailedTitle'),
+        description: t('documents.detail.additionalApprovalReasonRequired'),
+        variant: 'error',
+      });
+      return;
+    }
+
     setApprovalSubmitting(true);
 
     try {
@@ -714,6 +764,7 @@ export function DocumentDetailPage() {
           method: 'POST',
           body: JSON.stringify({
             userIds: approvalSelected.map((user) => user.id),
+            reason,
           }),
         },
       );
@@ -722,6 +773,7 @@ export function DocumentDetailPage() {
       setApprovalSelected([]);
       setApprovalSearchInput('');
       setApprovalResults([]);
+      setApprovalReason('');
       setAdditionalApprovalDialogOpen(false);
       showToast({
         title: t('documents.detail.additionalApprovalSuccessTitle'),
@@ -740,56 +792,106 @@ export function DocumentDetailPage() {
     }
   }
 
-  return (
-    <section className="space-y-5">
-      <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5 shadow-sm sm:px-4 sm:py-3">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between lg:gap-2.5">
-          <div className="flex flex-col gap-2">
-            <Button type="button" variant="outline" size="sm" className="h-8 shrink-0 rounded-full px-3 text-xs" onClick={() => navigate(-1)}>
-              <ArrowLeft className="h-4 w-4" />
-              {t('documents.detail.back')}
-            </Button>
+  async function handleAddComment(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
 
-            {canResubmit ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-8 shrink-0 rounded-full border-cyan-200 px-3 text-xs text-cyan-700 hover:bg-cyan-50 hover:text-cyan-700"
-                onClick={() => setEditDialogOpen(true)}
-              >
-                {t('documents.detail.updateDocument')}
-              </Button>
-            ) : null}
-          </div>
+    const comment = commentDraft.trim();
 
-          <div className="min-w-0 space-y-1.5 lg:ml-auto lg:w-auto lg:text-right">
-            <div className="flex flex-wrap items-center gap-1.5 lg:justify-end">
-              <span className="rounded-full bg-cyan-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-700">
-                {currentDocument.typeName ?? types.find((type) => type.id === currentDocument.typeId)?.name ?? t('documents.preview.fallbackName')}
-              </span>
-              <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-medium text-slate-600">
-                {statusLabel(currentDocument.status, t)}
-              </span>
-              <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-medium text-slate-600">
-                {t(`documents.revision.${currentDocument.revisionType}`)}
-              </span>
+    if (!comment) {
+      showToast({
+        title: t('documents.detail.actionFailedTitle'),
+        description: t('documents.detail.commentEmpty'),
+        variant: 'error',
+      });
+      return;
+    }
+
+    setCommentSubmitting(true);
+
+    try {
+      const response = await requestJson<DocumentDetailResponse>(`/documents/${currentDocument.id}/comments`, {
+        method: 'POST',
+        body: JSON.stringify({ comment }),
+      });
+
+      await refreshDetail(response);
+      setCommentDraft('');
+      setActiveTab('comments');
+    } catch (commentError) {
+      const description = commentError instanceof Error ? commentError.message : null;
+      showToast({
+        title: t('documents.detail.actionFailedTitle'),
+        ...(description ? { description } : {}),
+        variant: 'error',
+      });
+    } finally {
+      setCommentSubmitting(false);
+    }
+  }
+
+  function renderComment(comment: DocumentDetailComment) {
+    const isMine = comment.actorUserId === user?.id;
+
+    return (
+      <div key={comment.id} className={['flex', isMine ? 'justify-end' : 'justify-start'].join(' ')}>
+        <div className={['max-w-[82%] space-y-1.5', isMine ? 'text-right' : 'text-left'].join(' ')}>
+          {!isMine ? (
+            <div className="flex items-center gap-2">
+              <div className="h-7 w-7 shrink-0 rounded-full bg-slate-200" />
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-slate-950">{comment.actorFullName}</p>
+                <p className="text-[11px] text-slate-500">{formatDateTime(comment.createdAt)}</p>
+              </div>
             </div>
+          ) : (
+            <p className="text-[11px] text-slate-500">{formatDateTime(comment.createdAt)}</p>
+          )}
 
-            <div className="min-w-0">
-              <h1 className="truncate text-[1.2rem] font-semibold leading-tight tracking-tight text-slate-950 sm:text-[1.35rem]">
-                {currentDocument.name}
-              </h1>
-              <p className="mt-0.5 text-[11px] text-slate-500">
-                {t('documents.labels.creator')}: {currentDocument.createdByFullName} ·{' '}
-                {t('documents.labels.createdAt')}: {formatDateTime(currentDocument.createdAt)}
-              </p>
-            </div>
+          <div
+            className={[
+              'rounded-2xl px-4 py-3 text-sm leading-6 shadow-sm',
+              isMine
+                ? 'rounded-br-md bg-cyan-600 text-white'
+                : 'rounded-bl-md border border-slate-200 bg-slate-50 text-slate-800',
+            ].join(' ')}
+          >
+            {comment.message}
           </div>
         </div>
       </div>
+    );
+  }
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.55fr)_minmax(260px,0.45fr)]">
+  function renderHistory(event: DocumentDetailHistoryItem, index: number, total: number) {
+    const isLast = index === total - 1;
+
+    return (
+      <div key={event.id} className="flex gap-2.5">
+        <div className="flex flex-col items-center pt-1">
+          <span className="h-2.5 w-2.5 rounded-full border-2 border-white bg-cyan-500 shadow-[0_0_0_4px_rgba(34,211,238,0.18)]" />
+          {!isLast ? <span className="mt-1 w-px flex-1 bg-slate-200" /> : null}
+        </div>
+        <div className={['min-w-0 flex-1 rounded-xl border p-3', historyTone(event.eventType)].join(' ')}>
+          <div className="flex flex-wrap items-start justify-between gap-1.5">
+            <p className="text-xs font-semibold leading-5 text-slate-950">{formatHistoryDescription(event, t)}</p>
+            <span className="shrink-0 text-[10px] font-medium uppercase tracking-[0.16em] text-slate-500">
+              {formatDateTime(event.createdAt)}
+            </span>
+          </div>
+          {event.message ? <p className="mt-1 text-[11px] leading-5 text-slate-600">{event.message}</p> : null}
+          {event.reason ? (
+            <p className="mt-1 text-[11px] leading-5 text-slate-600">
+              <span className="font-semibold text-slate-700">{t('documents.labels.reason')}:</span> {event.reason}
+            </p>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <section className="space-y-5">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.55fr)_minmax(280px,0.45fr)]">
         <DocumentPreview
           title={currentDocument.name}
           source={buildDocumentPreviewSource(
@@ -809,7 +911,35 @@ export function DocumentDetailPage() {
           className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
         />
 
-        <div className="space-y-4 lg:sticky lg:top-4">
+        <div className="space-y-4">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-cyan-700">{t('documents.detail.summary')}</p>
+            <div className="mt-3 flex flex-wrap items-center gap-1.5">
+              <span className="rounded-full bg-cyan-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-700">
+                {currentDocument.typeName ?? types.find((type) => type.id === currentDocument.typeId)?.name ?? t('documents.preview.fallbackName')}
+              </span>
+              <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-medium text-slate-600">
+                {statusLabel(currentDocument.status, t)}
+              </span>
+              <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-medium text-slate-600">
+                {t(`documents.revision.${currentDocument.revisionType}`)}
+              </span>
+            </div>
+
+            <div className="mt-4 space-y-2">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-400">Name</p>
+                <p className="mt-1 break-words text-base font-semibold leading-6 text-slate-950">{currentDocument.name}</p>
+              </div>
+              <p className="text-sm text-slate-700">
+                <span className="font-medium text-slate-900">Автор:</span> {currentDocument.createdByFullName}
+              </p>
+              <p className="text-sm text-slate-700">
+                <span className="font-medium text-slate-900">Створено:</span> {formatDateTime(currentDocument.createdAt)}
+              </p>
+            </div>
+          </div>
+
           {currentDocument.requiresAction && currentActionParticipant ? (
             <div className="rounded-2xl border border-cyan-200 bg-cyan-50/60 p-3.5 shadow-sm">
               <div className="flex items-start justify-between gap-3">
@@ -874,54 +1004,94 @@ export function DocumentDetailPage() {
             </div>
           ) : null}
 
-          {currentDocument.status === 'rejected' ? (
-            <div className="rounded-2xl border border-rose-200 bg-rose-50 p-3.5 shadow-sm">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-rose-700">
-                {t('documents.detail.rejectedBanner')}
+          {canEditDocument || canRefund || canDelete || canResubmit ? (
+            <div className="rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-cyan-700">
+                {t('documents.detail.initiatorActions')}
               </p>
-              <h2 className="mt-1 text-sm font-semibold text-rose-950">{t('documents.detail.rejectedTitle')}</h2>
-              <p className="mt-2 text-xs font-medium text-rose-800">{t('documents.detail.rejectedReason')}</p>
-              <p className="mt-1 rounded-xl border border-rose-200 bg-white px-3 py-2 text-sm text-slate-800">
-                {currentDocument.lastRejectionReason ?? t('documents.detail.rejectedReasonEmpty')}
-              </p>
-              {canResubmit ? (
-                <Button
-                  type="button"
-                  className="mt-3 w-full min-w-0 overflow-hidden"
-                  onClick={async () => {
-                    try {
-                      const response = await requestJson<DocumentDetailResponse>(`/documents/${currentDocument.id}/resubmit`, {
-                        method: 'POST',
-                      });
 
-                      await refreshDetail(response);
-                      showToast({
-                        title: t('documents.detail.resubmitSuccessTitle'),
-                        description: t('documents.detail.resubmitSuccessDescription'),
-                        variant: 'success',
-                      });
-                    } catch (resubmitError) {
-                      const description = resubmitError instanceof Error ? resubmitError.message : null;
-                      showToast({
-                        title: t('documents.detail.actionFailedTitle'),
-                        ...(description ? { description } : {}),
-                        variant: 'error',
-                      });
-                    }
-                  }}
-                >
-                  <span className="min-w-0 truncate">{t('documents.detail.resubmit')}</span>
-                </Button>
+
+              {canResubmit && currentDocument.status === 'rejected' ? (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                  <p className="mt-1 text-xs font-medium text-rose-800">{t('documents.detail.rejectedReason')}</p>
+                  <p className="mt-1 rounded-xl border border-rose-200 bg-white px-3 py-2 text-sm text-slate-800">
+                    {currentDocument.lastRejectionReason ?? t('documents.detail.rejectedReasonEmpty')}
+                  </p>
+                </div>
               ) : null}
+
+              <div className="mt-2 space-y-2">
+                {canResubmit ? (
+                  <Button
+                    type="button"
+                    className="mt-3 w-full min-w-0 overflow-hidden"
+                    onClick={async () => {
+                      try {
+                        const response = await requestJson<DocumentDetailResponse>(`/documents/${currentDocument.id}/resubmit`, {
+                          method: 'POST',
+                        });
+
+                        await refreshDetail(response);
+                        showToast({
+                          title: t('documents.detail.resubmitSuccessTitle'),
+                          description: t('documents.detail.resubmitSuccessDescription'),
+                          variant: 'success',
+                        });
+                      } catch (resubmitError) {
+                        const description = resubmitError instanceof Error ? resubmitError.message : null;
+                        showToast({
+                          title: t('documents.detail.actionFailedTitle'),
+                          ...(description ? { description } : {}),
+                          variant: 'error',
+                        });
+                      }
+                    }}
+                  >
+                    <span className="min-w-0 truncate">{t('documents.detail.resubmit')}</span>
+                  </Button>
+                ) : null}
+
+                {canRefund ? (
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-sm font-medium text-slate-950">{t('documents.detail.refundDocument')}</p>
+                    <p className="mt-1 text-xs text-slate-500">{t('documents.detail.refundDocumentHint')}</p>
+                    <Button type="button" className="mt-3 w-full" onClick={handleRefundDocument} disabled={refunding || deletingDocument}>
+                      {refunding ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                      <span className="min-w-0 truncate">{t('documents.detail.refundDocument')}</span>
+                    </Button>
+                  </div>
+                ) : null}
+
+
+                {canEditDocument ? (
+                  <Button
+                    type="button"
+                    className="mt-2 w-full min-w-0 overflow-hidden"
+                    onClick={() => setEditDialogOpen(true)}
+                  >
+                    <span className="min-w-0 truncate">{t('documents.detail.updateDocument')}</span>
+                  </Button>
+                ) : null}
+
+                {canDelete ? (
+                  <Button
+                    type="button"
+                    className="mt-2 w-full border-rose-200 bg-rose-600 text-white hover:bg-rose-700"
+                    onClick={() => setDeleteDialogOpen(true)}
+                    disabled={refunding || deletingDocument}
+                  >
+                    {deletingDocument ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                    <span className="min-w-0 truncate">{t('documents.detail.deleteDocument')}</span>
+                  </Button>
+                ) : null}
+              </div>
             </div>
           ) : null}
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex items-center justify-between gap-2">
               <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-cyan-700">
-                  {t('documents.detail.signers')}
-                </p>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-cyan-700">{t('documents.detail.signers')}</p>
                 <h2 className="mt-1 text-sm font-semibold text-slate-950">{t('documents.detail.signers')}</h2>
               </div>
               <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-medium text-slate-500">
@@ -937,11 +1107,9 @@ export function DocumentDetailPage() {
                   <div key={participant.id} className="space-y-2">
                     <div className="flex items-center gap-2.5 rounded-xl border border-slate-200 bg-slate-50 p-2.5">
                       <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <p className="min-w-0 truncate text-sm font-semibold text-slate-950">
-                            {buildFullName(participant.userFirstName, participant.userLastName, participant.userEmail)}
-                          </p>
-                        </div>
+                        <p className="truncate text-sm font-semibold text-slate-950">
+                          {buildFullName(participant.userFirstName, participant.userLastName, participant.userEmail)}
+                        </p>
                       </div>
                       <span
                         className={[
@@ -961,7 +1129,7 @@ export function DocumentDetailPage() {
                       </span>
                     </div>
 
-                  {additionalApprovers.length > 0 ? (
+                    {additionalApprovers.length > 0 ? (
                       <div className="ml-6 space-y-1 border-l border-slate-200 pl-4">
                         <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
                           <span className="h-2 w-2 rounded-full bg-slate-300" />
@@ -1009,142 +1177,127 @@ export function DocumentDetailPage() {
               })}
             </div>
           </div>
-
-          <div className="rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm">
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-cyan-700">
-                  {t('documents.detail.history')}
-                </p>
-                <h2 className="mt-1 text-sm font-semibold text-slate-950">{t('documents.detail.history')}</h2>
-              </div>
-              <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-medium text-slate-500">
-                {history.length}
-              </span>
-            </div>
-
-            <div className="mt-3 space-y-3 md:hidden">
-              {history.map((event, index) => {
-                const isLast = index === history.length - 1;
-
-                return (
-                  <div key={event.id} className="flex gap-2.5">
-                    <div className="flex flex-col items-center pt-1">
-                      <span className="h-2.5 w-2.5 rounded-full border-2 border-white bg-cyan-500 shadow-[0_0_0_4px_rgba(34,211,238,0.18)]" />
-                      {!isLast ? <span className="mt-1 w-px flex-1 bg-slate-200" /> : null}
-                    </div>
-                    <div className={['min-w-0 flex-1 rounded-xl border p-3', historyTone(event.eventType)].join(' ')}>
-                      <div className="flex flex-wrap items-start justify-between gap-1.5">
-                        <p className="text-xs font-semibold leading-5 text-slate-950">{historyDescription(event, t)}</p>
-                        <span className="shrink-0 text-[10px] font-medium uppercase tracking-[0.16em] text-slate-500">
-                          {formatDateTime(event.createdAt)}
-                        </span>
-                      </div>
-                      {event.message ? <p className="mt-1 text-[11px] leading-5 text-slate-600">{event.message}</p> : null}
-                      {event.reason ? (
-                        <p className="mt-1 text-[11px] leading-5 text-slate-600">
-                          <span className="font-semibold text-slate-700">{t('documents.labels.rejectionReason')}:</span>{' '}
-                          {event.reason}
-                        </p>
-                      ) : null}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="mt-3 hidden space-y-3 md:block">
-              {visibleHistory.map((event, index) => {
-                const isLast = index === visibleHistory.length - 1;
-
-                return (
-                  <div key={event.id} className="flex gap-2.5">
-                    <div className="flex flex-col items-center pt-1">
-                      <span className="h-2.5 w-2.5 rounded-full border-2 border-white bg-cyan-500 shadow-[0_0_0_4px_rgba(34,211,238,0.18)]" />
-                      {!isLast ? <span className="mt-1 w-px flex-1 bg-slate-200" /> : null}
-                    </div>
-                    <div className={['min-w-0 flex-1 rounded-xl border p-3', historyTone(event.eventType)].join(' ')}>
-                      <div className="flex flex-wrap items-start justify-between gap-1.5">
-                        <p className="text-xs font-semibold leading-5 text-slate-950">{historyDescription(event, t)}</p>
-                        <span className="shrink-0 text-[10px] font-medium uppercase tracking-[0.16em] text-slate-500">
-                          {formatDateTime(event.createdAt)}
-                        </span>
-                      </div>
-                      {event.message ? <p className="mt-1 text-[11px] leading-5 text-slate-600">{event.message}</p> : null}
-                      {event.reason ? (
-                        <p className="mt-1 text-[11px] leading-5 text-slate-600">
-                          <span className="font-semibold text-slate-700">{t('documents.labels.rejectionReason')}:</span>{' '}
-                          {event.reason}
-                        </p>
-                      ) : null}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {hiddenHistoryCount > 0 ? (
-              <div className="mt-3 hidden justify-center md:flex">
-                <Button type="button" variant="outline" size="sm" onClick={() => setHistoryDialogOpen(true)}>
-                  {t('documents.detail.historyShowAll', { count: hiddenHistoryCount })}
-                </Button>
-              </div>
-            ) : null}
-          </div>
         </div>
       </div>
 
-      {historyDialogOpen ? (
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="grid grid-cols-2">
+          <button
+            type="button"
+            onClick={() => setActiveTab('comments')}
+            className={[
+              'group relative flex items-center justify-center gap-2 px-4 py-4 text-sm font-medium text-slate-700 transition-all duration-300 ease-out',
+              activeTab === 'comments'
+                ? 'bg-slate-50 text-slate-950'
+                : 'hover:bg-slate-50 hover:text-slate-950',
+            ].join(' ')}
+          >
+            <MessageSquareText className="h-4 w-4" />
+            {t('documents.detail.comments')}
+            <span
+              className={[
+                'absolute inset-x-0 bottom-0 h-0.5 origin-center rounded-full bg-cyan-300 transition-transform duration-300 ease-out',
+                activeTab === 'comments' ? 'scale-x-100' : 'scale-x-0 group-hover:scale-x-60',
+              ].join(' ')}
+            />
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('history')}
+            className={[
+              'group relative flex items-center justify-center gap-2 px-4 py-4 text-sm font-medium text-slate-700 transition-all duration-300 ease-out',
+              activeTab === 'history'
+                ? 'bg-slate-50 text-slate-950'
+                : 'hover:bg-slate-50 hover:text-slate-950',
+            ].join(' ')}
+          >
+            <History className="h-4 w-4" />
+            {t('documents.detail.historyTab')}
+            <span
+              className={[
+                'absolute inset-x-0 bottom-0 h-0.5 origin-center rounded-full bg-cyan-300 transition-transform duration-300 ease-out',
+                activeTab === 'history' ? 'scale-x-100' : 'scale-x-0 group-hover:scale-x-60',
+              ].join(' ')}
+            />
+          </button>
+        </div>
+
+        {activeTab === 'comments' ? (
+          <div className="space-y-4 bg-white p-4">
+            <div className="space-y-3">
+              {currentDocument.comments.length > 0 ? (
+                currentDocument.comments.map((comment) => renderComment(comment))
+              ) : (
+                <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+                  {t('documents.detail.commentEmpty')}
+                </div>
+              )}
+            </div>
+
+            <form className="rounded-2xl border border-slate-200 bg-slate-50 p-3 shadow-sm" onSubmit={handleAddComment}>
+              <label className="block space-y-2">
+                <span className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">{t('documents.detail.addComment')}</span>
+                <textarea
+                  value={commentDraft}
+                  onChange={(event) => setCommentDraft(event.target.value)}
+                  rows={4}
+                  placeholder={t('documents.detail.commentPlaceholder')}
+                  className="min-h-24 w-full resize-none rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
+                />
+              </label>
+              <div className="mt-3 flex justify-end">
+                <Button type="submit" disabled={commentSubmitting} className="min-w-32">
+                  {commentSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  {t('documents.detail.addComment')}
+                </Button>
+              </div>
+            </form>
+          </div>
+        ) : (
+          <div className="space-y-3 bg-white p-4">
+            {history.map((event, index) => renderHistory(event, index, history.length))}
+          </div>
+        )}
+      </div>
+
+      {deleteDialogOpen ? (
         <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 px-4 backdrop-blur-sm">
-          <div className="flex w-full max-w-3xl flex-col rounded-3xl border border-slate-200 bg-white shadow-2xl">
+          <div className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white shadow-2xl">
             <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-cyan-700">
-                  {t('documents.detail.history')}
+                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-rose-700">
+                  {t('documents.detail.deleteDocument')}
                 </p>
-                <h3 className="mt-1 text-lg font-semibold text-slate-950">{t('documents.detail.historyDialogTitle')}</h3>
+                <h3 className="mt-1 text-lg font-semibold text-slate-950">{t('documents.detail.deleteDocumentConfirm')}</h3>
               </div>
-              <Button type="button" variant="ghost" size="icon" onClick={() => setHistoryDialogOpen(false)}>
+              <Button type="button" variant="ghost" size="icon" onClick={() => setDeleteDialogOpen(false)}>
                 <X className="h-4 w-4" />
               </Button>
             </div>
 
-            <div className="max-h-[80vh] overflow-y-auto px-5 py-4">
-              <div className="space-y-3">
-                {history.map((event, index) => {
-                  const isLast = index === history.length - 1;
+            <div className="space-y-5 px-5 py-4">
+              <p className="text-sm leading-6 text-slate-600">{t('documents.detail.deleteDocumentConfirmMessage')}</p>
 
-                  return (
-                    <div key={event.id} className="flex gap-2.5">
-                      <div className="flex flex-col items-center pt-1">
-                        <span className="h-2.5 w-2.5 rounded-full border-2 border-white bg-cyan-500 shadow-[0_0_0_4px_rgba(34,211,238,0.18)]" />
-                        {!isLast ? <span className="mt-1 w-px flex-1 bg-slate-200" /> : null}
-                      </div>
-                      <div className={['min-w-0 flex-1 rounded-xl border p-3', historyTone(event.eventType)].join(' ')}>
-                        <div className="flex flex-wrap items-start justify-between gap-1.5">
-                          <p className="text-xs font-semibold leading-5 text-slate-950">{historyDescription(event, t)}</p>
-                          <span className="shrink-0 text-[10px] font-medium uppercase tracking-[0.16em] text-slate-500">
-                            {formatDateTime(event.createdAt)}
-                          </span>
-                        </div>
-                        {event.message ? <p className="mt-1 text-[11px] leading-5 text-slate-600">{event.message}</p> : null}
-                        {event.reason ? (
-                          <p className="mt-1 text-[11px] leading-5 text-slate-600">
-                            <span className="font-semibold text-slate-700">{t('documents.labels.rejectionReason')}:</span>{' '}
-                            {event.reason}
-                          </p>
-                        ) : null}
-                      </div>
-                    </div>
-                  );
-                })}
+              <div className="flex gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => setDeleteDialogOpen(false)}
+                  disabled={deletingDocument}
+                >
+                  {t('actions.cancel')}
+                </Button>
+                <Button
+                  type="button"
+                  className="flex-1 bg-rose-600 text-white hover:bg-rose-700"
+                  onClick={handleDeleteDocument}
+                  disabled={deletingDocument}
+                >
+                  {deletingDocument ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  {t('documents.detail.deleteDocument')}
+                </Button>
               </div>
-            </div>
-
-            <div className="flex justify-end border-t border-slate-100 px-5 py-4">
-              <Button type="button" variant="outline" onClick={() => setHistoryDialogOpen(false)}>
-                {t('actions.close')}
-              </Button>
             </div>
           </div>
         </div>
@@ -1246,13 +1399,9 @@ export function DocumentDetailPage() {
                 <Button type="button" variant="outline" onClick={() => setEditDialogOpen(false)}>
                   {t('actions.close')}
                 </Button>
-                <Button type="button" variant="outline" onClick={handleRename} disabled={renaming}>
-                  {renaming ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                  <span className="min-w-0 truncate">{t('documents.detail.updateName')}</span>
-                </Button>
-                <Button type="button" className="bg-cyan-600 text-white hover:bg-cyan-700" onClick={handleReplaceFile} disabled={replacingFile}>
-                  {replacingFile ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                  <span className="min-w-0 truncate">{t('documents.detail.updateFile')}</span>
+                <Button type="button" className="bg-cyan-600 text-white hover:bg-cyan-700" onClick={handleUpdateDocument} disabled={updatingDocument}>
+                  {updatingDocument ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  <span className="min-w-0 truncate">{t('documents.detail.updateDocument')}</span>
                 </Button>
               </div>
             </div>
@@ -1359,7 +1508,15 @@ export function DocumentDetailPage() {
                 </p>
                 <h3 className="mt-1 text-lg font-semibold text-slate-950">{t('documents.detail.additionalApproval')}</h3>
               </div>
-              <Button type="button" variant="ghost" size="icon" onClick={() => setAdditionalApprovalDialogOpen(false)}>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => {
+                  setAdditionalApprovalDialogOpen(false);
+                  setApprovalReason('');
+                }}
+              >
                 <X className="h-4 w-4" />
               </Button>
             </div>
@@ -1368,6 +1525,17 @@ export function DocumentDetailPage() {
               <div className="space-y-1">
                 <p className="text-sm text-slate-600">{t('documents.detail.additionalApprovalDescription')}</p>
               </div>
+
+              <label className="block space-y-1.5">
+                <span className="text-sm font-medium text-slate-700">{t('documents.detail.additionalApprovalReasonLabel')}</span>
+                <textarea
+                  value={approvalReason}
+                  onChange={(event) => setApprovalReason(event.target.value)}
+                  rows={3}
+                  placeholder={t('documents.detail.additionalApprovalReasonPlaceholder')}
+                  className="min-h-20 w-full resize-none rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
+                />
+              </label>
 
               {approvalSelected.length > 0 ? (
                 <div className="flex flex-wrap gap-2">
@@ -1423,7 +1591,15 @@ export function DocumentDetailPage() {
               ) : null}
 
               <div className="flex flex-col md:flex-row gap-2">
-                <Button type="button" variant="outline" className="flex-1" onClick={() => setAdditionalApprovalDialogOpen(false)}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => {
+                    setAdditionalApprovalDialogOpen(false);
+                    setApprovalReason('');
+                  }}
+                >
                   {t('actions.cancel')}
                 </Button>
                 <Button type="submit" className="flex-1" disabled={approvalSubmitting}>

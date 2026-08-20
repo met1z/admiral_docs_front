@@ -10,7 +10,7 @@ export function RequireAuth({ children }: { children: React.ReactNode }) {
 
   if (status === 'loading') {
     return (
-      <div className="grid min-h-screen place-items-center bg-slate-50 px-6">
+      <div className="grid min-h-screen place-items-center bg-white px-6">
         <div className="rounded-2xl border border-slate-200 bg-white px-6 py-4 text-sm text-slate-600 shadow-sm">
           {t('auth.login.loading')}
         </div>
